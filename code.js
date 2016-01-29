@@ -45,46 +45,59 @@ exports.searchUser = function(username,callback){
 }
 
 exports.addFriend = function(myUsername,friendUsername,callback){
-  var checkBeFriend = function(user, friendUsername){
+  var checkBeFriend = function(user, myFriend){
     for(var i=0;i<user.friends.length;i++){
-      var friend = user.friends[i];
-      if(friend.username == friendUsername) return true;
+      var friendID = user.friends[i].toString();
+      if(friendID == myFriend._id.toString()) return true;
     }
     return false;
   }
 
+  var checkIsOnWaitingList = function(user,friend){
+    for(var i=0;i<user.waiting_friends.length;i++){
+      var friendID = user.waiting_friends[i].toString();
+      if(friendID == friend._id.toString()) return true;
+    }
+    return false;
+  }
   /**
     If friend request has been sent then it should appear in friend's waiting list.
   */
-  var checkIsAlreadyRequest = function(friend , myUsername) {
+  var checkIsAlreadyRequest = function(friend , myUser) {
     for(var i=0;i<friend.waiting_friends.length;i++){
-      var user = friend.waiting_friends[i];
-      if(user.username == myUsername) return true;
+      var userID = friend.waiting_friends[i].toString();
+      if(userID == myUser._id.toString()) return true;
     }
     return false;
   }
 
   var callback1 = function(myUser){
-    var isFriend = checkBeFriend(myUser,friendUsername);
-    if(isFriend){
-      callback(false);
-    }else{
-      var callback2 = function(friend){ // Add me to friend's waiting list.
-        var isSentRequest = checkIsAlreadyRequest(friend,myUsername);
-        if(isSentRequest){ //Already sent friend request.
+    var callback2 = function(friend){
+      var isOnWaitingList = checkIsOnWaitingList(myUser,friend);
+      if(isOnWaitingList){
+        exports.acceptFriend(myUsername,friendUsername,callback);
+      }else{
+        var isFriend = checkBeFriend(myUser,friend);
+        if(isFriend){
           callback(false);
         }else{
-          db.users.update({"username" : friend.username} ,
-            {$push : {waiting_friends : myUser}}
-          );
-          callback(true);
+          var isSentRequest = checkIsAlreadyRequest(friend,myUser);
+          // console.log(isSentRequest);
+          if(isSentRequest){ //Already sent friend request.
+            callback(false);
+          }else{
+            db.users.update({"username" : friend.username} ,
+              {$push : {waiting_friends : myUser._id}}
+            );
+            callback(true);
+          }
         }
-      };
-      exports.searchUser(friendUsername, callback2);
-    }
+      }
 
+    }
+    exports.searchUser(friendUsername, callback2);
   }
-    exports.searchUser(myUsername,callback1);
+  exports.searchUser(myUsername,callback1);
 }
 
 
@@ -103,29 +116,29 @@ exports.disconnect = function(){
 }
 
 exports.acceptFriend = function(myUsername,friendUsername,callback){
-  var checkIsWaiting = function(myUser){
+  var checkIsWaiting = function(myUser,friend){
     for(var i =0;i<myUser.waiting_friends.length;i++){
-      if(myUser.waiting_friends[i].username == friendUsername) return i;
+      if(myUser.waiting_friends[i].toString() == friend._id.toString()) return i;
     }
     return -1;
   }
 
   var callback1 = function(myUser){
-    var isWaiting = checkIsWaiting(myUser);
-    if(isWaiting >= 0){ //found on waiting list.
-      var callback2 = function(friend){
+    var callback2 = function(friend){
+      var isWaiting = checkIsWaiting(myUser,friend);
+      if(isWaiting >= 0){
         db.users.update({"username" : myUsername} ,
-        {$push : {friends : friend}});
+        {$push : {friends : friend._id}});
         db.users.update({"username" : myUsername} ,
-        {$pull : {waiting_friends : {'username' : friendUsername}}});
+        {$pull : {waiting_friends : friend._id}});
         db.users.update({"username" : friendUsername} ,
-        {$push : {friends : myUser}});
+        {$push : {friends : myUser._id}});
         callback(true);
+      }else{
+        callback(false);
       }
-      exports.searchUser(friendUsername,callback2);
-    }else{
-      callback(false);
     }
+    exports.searchUser(friendUsername,callback2);
   }
 
   exports.searchUser(myUsername,callback1);
